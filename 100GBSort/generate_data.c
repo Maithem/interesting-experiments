@@ -4,13 +4,16 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <assert.h>
-#include <time.h>
 
 /**
  * This program generates a dataset made of
  * of files that contain 64-bit positive integers.
  * The user is able to specify the chunk size
- * (i.e. file) and the number of chunks.
+ * (i.e. file) and the number of chunks. For example,
+ * if the chunk size is 1mb and the number of chunks is
+ * 2, then this program will create two files (1mb each)
+ * for each chunk. Where each file contains the integers
+ * its range, sequentially.
  *
  * Each file will have the following layout:
  * 
@@ -28,6 +31,8 @@
  *
  * Range Start, Range End and Data Width are all 64-bit positive
  * integers.
+ *
+ * @author Maithem
  *
  * 
  **/
@@ -55,18 +60,18 @@ void create_chunk(int64_t start, int64_t end, const char *dir) {
     size_t written = fwrite(header, sizeof(int64_t), headerLen, filePtr);
     assert(written == headerLen);
     // Write data
+    int64_t dataLen = end - start + 1; 
+    int64_t *dataBuff = malloc(dataLen * sizeof(int64_t));
+    for (int64_t x = 0; x < dataLen; x++) {
+        dataBuff[x] = start + x;
+    }
     
+    // Write data buffer to file
+    written = fwrite(dataBuff, sizeof(int64_t), dataLen, filePtr);
+    assert(written == dataLen);
+    
+    free(dataBuff);
     fclose(filePtr);
-}
-
-
-int comp (const void * elem1, const void * elem2) 
-{
-    int f = *((int*)elem1);
-    int s = *((int*)elem2);
-    if (f > s) return  1;
-    if (f < s) return -1;
-    return 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -80,15 +85,16 @@ int main(int argc, char *argv[]) {
     u_i numChunks = strtol(argv[2], NULL, 0);
     const char *chunksDir = argv[3];
 
-        
     int64_t rangeWidth = (BytesInMb * chunkSize) / sizeof(int64_t);
-    
+    // Note: there is no need to concurrently write the files
+    // to disk, as no speed up will be achieved. On my machine it took
+    // 10 minutes to generate a 10Gb dataset. The write throughput of
+    // 156 mb/sec matches my disk's write thoughput benchmark.
     for (int x = 0; x < numChunks; x++) {
         int64_t start = x * rangeWidth;
         int64_t end = start + rangeWidth - 1;
-        //printf("%"PRId64" %"PRId64"\n", start, end);
         create_chunk(start, end, chunksDir);
     } 
-    
+
     return 0;
 }
