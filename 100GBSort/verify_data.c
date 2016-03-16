@@ -78,12 +78,10 @@ int main(int argc, char *argv[]) {
     for (int x = 0; x < files->len; x++) {
     
         // Open chunk file in read-only mode
-        char filePath[100];
-        sprintf(filePath, "%s/%s", chunksDir, files->file_paths[x]);
-        FILE *file = fopen(filePath, "r");
+        FILE *file = fopen(files->file_paths[x], "r");
         
         if (file == NULL) {
-            printf("Can't open file %s\n", filePath);
+            printf("Can't open file %s\n", files->file_paths[x]);
             return -1;
         }
         
