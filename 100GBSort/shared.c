@@ -51,6 +51,10 @@ FilesDirectory *read_dir(const char *dir_path) {
     return temp;
 }
 
+
+/*
+ * Compute n choose k
+ **/
 unsigned nCk( unsigned n, unsigned k ) {
     if (k > n) return 0;
     if (k * 2 > n) k = n-k;
@@ -64,7 +68,9 @@ unsigned nCk( unsigned n, unsigned k ) {
     return result;
 }
 
-/* shuffle an array */
+/*
+ * Randomly shuffle an array.
+ */
 void shuffle(int64_t *a, int64_t n) {
     int64_t i;
     int64_t r;

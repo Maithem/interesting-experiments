@@ -1,4 +1,4 @@
-CC = gcc -std=gnu99
+CC = gcc -Ofast -std=gnu99
 
 GENERATE_DATA = "generate"
 READ_CHUNK = "read"

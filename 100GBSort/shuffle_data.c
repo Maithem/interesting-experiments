@@ -38,6 +38,11 @@ int main(int argc, char *argv[]) {
     //unsigned int passes = nCk(files->len, 2) * 2;
     unsigned int passes = 300;
     
+    if (files->len == 1) {
+        printf("Can't shuffle a single chunk\n");
+        return -1;
+    }
+    
     for (unsigned int x = 0; x < passes; x++) {
         
         printf("* Shuffle pass %u out of %u...\n", x + 1, passes);

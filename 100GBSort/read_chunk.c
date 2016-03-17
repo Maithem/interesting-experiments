@@ -35,8 +35,9 @@ int main(int argc, char *argv[]) {
     int64_t chunkLen = header[1] - header[0] + 1;
     int64_t *dataBuff = malloc(sizeof(int64_t) * chunkLen);
     
-    fread(dataBuff, sizeof(int64_t), chunkLen, file);
-    
+    read = fread(dataBuff, sizeof(int64_t), chunkLen, file);
+    assert(read == chunkLen);
+
     for (int64_t x = 0; x < chunkLen; x++) {
         printf("[%" PRId64 "] %" PRId64 "\n", x, dataBuff[x]);
     }
