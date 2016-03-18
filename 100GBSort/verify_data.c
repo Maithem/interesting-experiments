@@ -31,6 +31,7 @@ struct chunkStat {
 };
 
 typedef struct chunkStat stat;
+typedef unsigned __int128 int128_t;
 
 void computeChunkStat(stat *st, FILE *chunkFile) {
     
@@ -64,9 +65,8 @@ int main(int argc, char *argv[]) {
     
     const char *chunksDir = argv[1];
     
-    stat globalStat;
-    globalStat.rangeLen = 0;
-    globalStat.totalSum = 0;
+    int128_t totalSum = 0;
+    int128_t numOfInts = 0;
 
     FilesDirectory *files = read_dir(chunksDir);
     
@@ -92,8 +92,8 @@ int main(int argc, char *argv[]) {
         computeChunkStat(&chunkStat, file);
         
         // Aggregate range lengths and total sums
-        globalStat.rangeLen += chunkStat.rangeLen;
-        globalStat.totalSum += chunkStat.totalSum;
+        numOfInts += chunkStat.rangeLen;
+        totalSum += chunkStat.totalSum;
 
         //dont forget to close file
         fclose(file);
@@ -102,17 +102,15 @@ int main(int argc, char *argv[]) {
 
     // Compute the sum of the range sequence and check if it
     // equals the aggregate chunks sums
-    int64_t sequenceSum = 0;
+    int128_t sequenceSum = 0;
     // since the sequence is 0 to n - 1, we need to
     // subtract 1 from the global range length. Otherwise
     // it would compute the total sequence sum for 1 to n
-    int64_t n = globalStat.rangeLen - 1;
+    int128_t n = numOfInts - 1;
     sequenceSum = (n * (n + 1)) / 2;
     
-    printf("seq sum %" PRId64 " computed sum %" PRId64 "\n", sequenceSum,
-           globalStat.totalSum);
-    
-    assert(sequenceSum == globalStat.totalSum);
+    assert(totalSum == sequenceSum);
+    printf("Great! check-sum passed out\n")
 
     return 0;
 }

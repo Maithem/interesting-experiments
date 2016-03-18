@@ -92,7 +92,7 @@ int main(int argc, char *argv[]) {
         // Shuffle data
         shuffle(merged, rangeLen1 + rangeLen2);
         
-        // Reween file pointers to overwrite the data with the new shuffled data
+        // Rewind file pointers to overwrite the data with the new shuffled data
         fseek(firstChunk, sizeof(int64_t) * headerLen, SEEK_SET);
         fseek(secondChunk, sizeof(int64_t) * headerLen, SEEK_SET);
         
