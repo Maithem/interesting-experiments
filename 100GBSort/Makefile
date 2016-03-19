@@ -1,4 +1,4 @@
-CC = gcc -Ofast -std=gnu99
+CC = gcc -Ofast -pthread -std=gnu99
 
 GENERATE_DATA = "generate"
 READ_CHUNK = "read"
@@ -11,7 +11,7 @@ build:
 	$(CC) -g -o $(READ_CHUNK) read_chunk.c
 	$(CC) -g -o $(VERIFY_DATA) verify_data.c shared.c
 	$(CC) -g -o $(SHUFFLE_DATA) shuffle_data.c shared.c
-	$(CC) -g -o $(EXTERNAL_SORT) external_sort.c shared.c
+	$(CC) -g -o $(EXTERNAL_SORT) external_sort.c shared.c thpool.c
 
 clean:
 	-rm -rf  $(EXTERNAL_SORT) $(GENERATE_DATA) $(READ_CHUNK) $(VERIFY_DATA) $(SHUFFLE_DATA)
