@@ -52,6 +52,12 @@ FilesDirectory *read_dir(const char *dir_path) {
 }
 
 
+int cmp(const void *a, const void *b) {
+  const int64_t da = *((const int64_t *) a);
+  const int64_t db = *((const int64_t *) b);
+  return (da < db) ? -1 : (da == db) ? 0 : 1;
+}
+
 void push(Stack *stack, Range *range, pthread_mutex_t *lock) {
     pthread_mutex_lock(lock);
     

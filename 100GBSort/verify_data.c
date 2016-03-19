@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
     sequenceSum = (n * (n + 1)) / 2;
     
     assert(totalSum == sequenceSum);
-    printf("Great! check-sum passed out\n");
+    printf("Great! check-sum passed!\n");
 
     return 0;
 }

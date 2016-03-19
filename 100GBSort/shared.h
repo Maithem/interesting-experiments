@@ -23,6 +23,8 @@ typedef struct _stack {
 } Stack;
 
 
+int cmp(const void *a, const void *b);
+
 void push(Stack *stack, Range *range, pthread_mutex_t *lock);
 
 Range *pop(Stack *stack, pthread_mutex_t *lock);
