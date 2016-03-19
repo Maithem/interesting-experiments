@@ -52,6 +52,42 @@ FilesDirectory *read_dir(const char *dir_path) {
 }
 
 
+void push(Stack *stack, Range *range, pthread_mutex_t *lock) {
+    pthread_mutex_lock(lock);
+    
+    LinkedList *head = stack->head;
+    LinkedList *newNode = malloc(sizeof(LinkedList));
+    newNode->elem = range;
+    newNode->next = NULL;
+
+    if (head == NULL) {
+        stack->head = newNode;
+    } else {
+        newNode->next = head;
+        stack->head = newNode;
+    }
+    stack->size++;
+    
+    pthread_mutex_unlock(lock);
+}
+
+
+Range *pop(Stack *stack, pthread_mutex_t *lock) {
+    pthread_mutex_lock(lock);
+    LinkedList *head = stack->head;
+    if (head == NULL) {
+        return NULL;
+    } else {
+        stack->head = stack->head->next;
+        stack->size--;
+        Range *temp = head->elem;
+        free(head);
+        return temp;
+    }
+    pthread_mutex_unlock(lock);
+}
+
+
 /*
  * Compute n choose k
  **/
