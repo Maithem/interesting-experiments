@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
     srand(time(NULL));
     
     const char *path = argv[1];
-    FilesDirectory *files = read_dir(path);
+    FilesList *files = read_dir(path);
     // Try to at least shuffle every set of two files
     // TODO(Maithem) this is very slow for a large dataset
     // might need to parallize it later

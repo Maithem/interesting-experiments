@@ -186,6 +186,10 @@ int thpool_add_work(thpool_* thpool_p, void *(*function_p)(void*), void* arg_p){
 	return 0;
 }
 
+int thpool_count(thpool_* thpool_p) {
+	return thpool_p->num_threads_working;
+}
+
 
 /* Wait until all jobs have finished */
 void thpool_wait(thpool_* thpool_p){

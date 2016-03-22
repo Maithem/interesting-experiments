@@ -3,17 +3,13 @@
 
 #include <pthread.h>
 
-typedef struct FilesDirectory {
+typedef struct FilesList {
     char **file_paths;
     unsigned int len;
-} FilesDirectory;
-
-typedef struct _range {
-    
-} Range;
+} FilesList;
 
 typedef struct _linkedList {
-    Range *elem;
+    FilesList *list;
     struct _linkedList *next;
 } LinkedList;
 
@@ -22,14 +18,20 @@ typedef struct _stack {
     LinkedList *head;
 } Stack;
 
+typedef struct mergeList {
+    FilesList *a;
+    FilesList *b;
+    Stack *stack;
+} MergeList;
+
 
 int cmp(const void *a, const void *b);
 
-void push(Stack *stack, Range *range, pthread_mutex_t *lock);
+void push(Stack *stack, FilesList *range, pthread_mutex_t *lock);
 
-Range *pop(Stack *stack, pthread_mutex_t *lock);
+FilesList *pop(Stack *stack, pthread_mutex_t *lock);
 
-FilesDirectory *read_dir(const char *dir_path);
+FilesList *read_dir(const char *dir_path);
 
 unsigned nCk( unsigned n, unsigned k );
 

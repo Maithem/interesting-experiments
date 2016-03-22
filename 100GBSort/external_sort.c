@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <assert.h>
 
 #include "thpool.h"
@@ -35,26 +36,66 @@ void *sort_file(void *param) {
     free(dataBuff);
 }
 
-int main(int argc, char *argv[]) {
-    
-    const char *dir = argv[1];
-    
-    // Initialize stack and threadpool
-    Stack *stack = malloc(sizeof(Stack));
-    stack->head = NULL;
-    stack->size = 0;
+void *merge(void *param) {
+    MergeList *list = param;
+    sleep(3);
+    FilesList *temp = malloc(sizeof(FilesList));
+    temp->file_paths = malloc(sizeof(char**));
+    temp->file_paths[0] = NULL;
+    temp->len = 1;
+    push(list->stack, temp, &lock);
+}
 
-    threadpool thpool = thpool_init(16);
-    
-    FilesDirectory *files = read_dir(dir);
+int main(int argc, char *argv[]) {
+    const int threads = atoi(argv[1]);
+    const char *dir = argv[2];
+
+    // Initialize stack and threadpool
+    Stack *sortedStack = malloc(sizeof(Stack));
+    sortedStack->head = NULL;
+    sortedStack->size = 0;
+
+    threadpool thpool = thpool_init(threads);
+    FilesList *files = read_dir(dir);
     
     for (int x = 0; x < files->len; x++) {
         char *file_name = files->file_paths[x];
         thpool_add_work(thpool, sort_file, file_name);
     }
-    
+
     thpool_wait(thpool);
-    printf("Done waiting....\n");
+    printf("First pass done!\n");
+    
+    // Add each chunk to the sorted stack
+    for (int x = 0; x < files->len; x++) {
+        FilesList *temp = malloc(sizeof(FilesList));
+        temp->file_paths = malloc(sizeof(char**));
+        temp->file_paths[0] = files->file_paths[x];
+        temp->len = 1;
+        push(sortedStack, temp, &lock);
+    }
+    
+    for(;;) {
+        printf("size of stack %d\n", sortedStack->size);
+        if (sortedStack->size == 1 &&
+            thpool_count(thpool) == 0) break;
+    
+        for(;;) {
+            if(sortedStack->size >= 2) {
+                FilesList *a = pop(sortedStack, &lock);
+                FilesList *b = pop(sortedStack, &lock);
+                MergeList *mergeList = malloc(sizeof(MergeList));
+                mergeList->a = a;
+                mergeList->b = b;
+                mergeList->stack = sortedStack;
+                thpool_add_work(thpool, merge, mergeList);
+            } else {
+                break;
+            }
+        }
+        // Sleep before we check the sorted stack again
+        sleep(1);
+    }
 
     return 0;
 }

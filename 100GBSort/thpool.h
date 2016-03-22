@@ -96,6 +96,7 @@ int thpool_add_work(threadpool, void *(*function_p)(void*), void* arg_p);
  */
 void thpool_wait(threadpool);
 
+int thpool_count(threadpool);
 
 /**
  * @brief Pauses all threads immediately

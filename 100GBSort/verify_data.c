@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
     int128_t totalSum = 0;
     int128_t numOfInts = 0;
 
-    FilesDirectory *files = read_dir(chunksDir);
+    FilesList *files = read_dir(chunksDir);
     
     if (files == NULL) {
         printf("Couldn't read directory %s\n", chunksDir);

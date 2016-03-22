@@ -12,9 +12,9 @@
  *  the directory).
  **/
 
-FilesDirectory *read_dir(const char *dir_path) {
+FilesList *read_dir(const char *dir_path) {
     
-    FilesDirectory *temp = malloc(sizeof(FilesDirectory));
+    FilesList *temp = malloc(sizeof(FilesList));
     
     DIR *fd = opendir(dir_path);
     
@@ -58,12 +58,12 @@ int cmp(const void *a, const void *b) {
   return (da < db) ? -1 : (da == db) ? 0 : 1;
 }
 
-void push(Stack *stack, Range *range, pthread_mutex_t *lock) {
+void push(Stack *stack, FilesList *range, pthread_mutex_t *lock) {
     pthread_mutex_lock(lock);
     
     LinkedList *head = stack->head;
     LinkedList *newNode = malloc(sizeof(LinkedList));
-    newNode->elem = range;
+    newNode->list = range;
     newNode->next = NULL;
 
     if (head == NULL) {
@@ -78,19 +78,21 @@ void push(Stack *stack, Range *range, pthread_mutex_t *lock) {
 }
 
 
-Range *pop(Stack *stack, pthread_mutex_t *lock) {
+FilesList *pop(Stack *stack, pthread_mutex_t *lock) {
     pthread_mutex_lock(lock);
     LinkedList *head = stack->head;
     if (head == NULL) {
+        pthread_mutex_unlock(lock);
         return NULL;
     } else {
         stack->head = stack->head->next;
         stack->size--;
-        Range *temp = head->elem;
+        FilesList *temp = head->list;
         free(head);
+        pthread_mutex_unlock(lock);
+        pthread_mutex_unlock(lock);
         return temp;
     }
-    pthread_mutex_unlock(lock);
 }
 
 
