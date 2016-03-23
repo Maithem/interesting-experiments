@@ -19,9 +19,11 @@ typedef struct _stack {
 } Stack;
 
 typedef struct mergeList {
+    unsigned int seq;
     FilesList *a;
     FilesList *b;
     Stack *stack;
+    char *dir;
 } MergeList;
 
 

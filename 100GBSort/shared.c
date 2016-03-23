@@ -34,7 +34,7 @@ FilesList *read_dir(const char *dir_path) {
     }
     
     temp->len = len;
-    temp->file_paths = malloc(sizeof(char **) * len);
+    temp->file_paths = malloc(sizeof(char *) * len);
     // Close and open the directory to get another
     // iterator
     closedir(fd);
