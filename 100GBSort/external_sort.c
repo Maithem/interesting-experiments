@@ -77,7 +77,7 @@ void write_file(char *file_path, int64_t *buff, unsigned int len) {
     int headerLen = 3;
     int64_t header[headerLen];
 
-    header[1] = len;
+    header[1] = len - 1;
     header[0] = 0;
     header[2] = len;
     
@@ -110,6 +110,16 @@ void *merge(void *param) {
     temp->len = list->a->len + list->b->len;
     temp->file_paths = malloc(sizeof(char*) * temp->len);
     
+    printf("Merging streams:\n");
+    for(int x =0; x < list->a->len; x++){
+        printf(" %s ", list->a->file_paths[x]);
+    }
+    printf("\n");
+    for(int x =0; x < list->b->len; x++){
+        printf(" %s ", list->b->file_paths[x]);
+    }
+    printf("\n");
+    
     int64_t stream1 = getTotal(list->a);
     int64_t stream2 = getTotal(list->b);
     int64_t total = stream1 + stream2;
@@ -123,6 +133,7 @@ void *merge(void *param) {
 
     ind1 = width;
     ind2 = width;
+    
     int64_t *streamBuff1;
     int64_t *streamBuff2;
     
@@ -137,8 +148,19 @@ void *merge(void *param) {
         } else if (ind1 >= width && file_num1 < list->a->len) {
             streamBuff1 = malloc(sizeof(int64_t) * width);
             FILE *file = fopen(list->a->file_paths[file_num1], "r");
-            size_t read = fread(streamBuff1, sizeof(int64_t), width, file);
+
+            size_t headerLen = 3;
+            int64_t header[headerLen];
+            // Read chunk header
+            size_t read = fread(header, sizeof(int64_t), headerLen, file);
+            assert(read == headerLen);
+            read = fread(streamBuff1, sizeof(int64_t), width, file);
             assert(read == width);
+            fclose(file);
+            int ret = remove(list->a->file_paths[file_num1]);
+            if (ret != 0) {
+                printf("couldnt delete file %s\n", list->a->file_paths[file_num1]);
+            }
             ind1 = 0;
             file_num1++;
         } else if(ind1 >= width && file_num1 >= list->a->len){
@@ -152,8 +174,19 @@ void *merge(void *param) {
         } else if (ind2 >= width && file_num2 < list->b->len) {
             streamBuff2 = malloc(sizeof(int64_t) * width);
             FILE *file = fopen(list->b->file_paths[file_num2], "r");
-            size_t read = fread(streamBuff2, sizeof(int64_t), width, file);
+            size_t headerLen = 3;
+            int64_t header[headerLen];
+            // Read chunk header
+            size_t read = fread(header, sizeof(int64_t), headerLen, file);
+            assert(read == headerLen);
+            read = fread(streamBuff2, sizeof(int64_t), width, file);
             assert(read == width);
+            fclose(file);
+            int ret = remove(list->b->file_paths[file_num2]);
+            if (ret != 0) {
+                printf("couldnt delete file %s\n", list->b->file_paths[file_num2]);
+            }
+            
             ind2 = 0;
             file_num2++;
         } else if(ind2 >= width && file_num2 >= list->b->len){
@@ -163,7 +196,6 @@ void *merge(void *param) {
         }
         
         if (ind1 == -1 && ind2 == -1) {
-            printf("both streams empty\n");
         } else if(ind1 == -1) {
             merge_buff[merge_ind] = streamBuff2[ind2];
             merge_ind++;
@@ -187,12 +219,9 @@ void *merge(void *param) {
             // Merged a chunk, need to flush buffer
             // and write file
             char *filePath = malloc(sizeof(char) * 120);
-            sprintf(filePath, "%s/s-%u-%u.bin", list->dir, list->seq, merge_chunk);
-            printf("merged file is %s\n", filePath);
             write_file(filePath, merge_buff, width);
             
             temp->file_paths[merge_chunk] = filePath;
-            
             merge_chunk++;
             merge_ind = 0;
         }
@@ -261,7 +290,7 @@ int main(int argc, char *argv[]) {
             }
         }
         // Sleep before we check the sorted stack again
-        sleep(2);
+        sleep(1);
     }
 
     return 0;

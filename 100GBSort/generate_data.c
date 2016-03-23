@@ -86,7 +86,6 @@ int main(int argc, char *argv[]) {
     const char *chunksDir = argv[3];
 
     int64_t rangeWidth = (BytesInMb * chunkSize) / sizeof(int64_t);
-    rangeWidth = 10;
     // Note: there is no need to concurrently write the files
     // to disk, as no speed up will be achieved. On my machine it took
     // 10 minutes to generate a 10Gb dataset. The write throughput of
