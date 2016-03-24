@@ -134,8 +134,8 @@ void *merge(void *param) {
     ind1 = width;
     ind2 = width;
     
-    int64_t *streamBuff1;
-    int64_t *streamBuff2;
+    int64_t *streamBuff1=NULL;
+    int64_t *streamBuff2=NULL;
     
     int64_t *merge_buff = malloc(sizeof(int64_t) * width);
     int64_t merge_ind = 0;
@@ -146,6 +146,7 @@ void *merge(void *param) {
         if (ind1 == -1) {
           // Do nothing  
         } else if (ind1 >= width && file_num1 < list->a->len) {
+            if(streamBuff1 != NULL) free(streamBuff1);
             streamBuff1 = malloc(sizeof(int64_t) * width);
             FILE *file = fopen(list->a->file_paths[file_num1], "r");
 
@@ -172,6 +173,7 @@ void *merge(void *param) {
         if (ind2 == -1) {
           // Do nothing  
         } else if (ind2 >= width && file_num2 < list->b->len) {
+            if(streamBuff2 != NULL) free(streamBuff2);
             streamBuff2 = malloc(sizeof(int64_t) * width);
             FILE *file = fopen(list->b->file_paths[file_num2], "r");
             size_t headerLen = 3;
@@ -219,6 +221,7 @@ void *merge(void *param) {
             // Merged a chunk, need to flush buffer
             // and write file
             char *filePath = malloc(sizeof(char) * 120);
+            sprintf(filePath, "%s/s-%u-%u.bin", list->dir, list->seq, merge_chunk);
             write_file(filePath, merge_buff, width);
             
             temp->file_paths[merge_chunk] = filePath;
