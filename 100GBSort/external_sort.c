@@ -8,9 +8,16 @@
 #include "thpool.h"
 #include "shared.h"
 
-pthread_mutex_t lock;
+#include <time.h>
+void timestamp()
+{
+    time_t ltime; /* calendar time */
+    ltime=time(NULL); /* get current cal time */
+    printf("%s",asctime( localtime(&ltime) ) );
+}
 
-char *gdir;
+pthread_mutex_t lock;
+int64_t width;
 
 void *sort_file(void *param) {
     const char *file_name = (char *) param;
@@ -43,33 +50,16 @@ void *sort_file(void *param) {
 
 int64_t getTotal(FilesList *a) {
     int64_t range = 0;
-
-    for(int x = 0; x < a->len; x++) {
-        size_t read;
-        int headerLen = 3;
-        int64_t header[headerLen];
-        // Read file header
-        FILE *file = fopen(a->file_paths[x], "r");
-        read = fread(header, sizeof(int64_t), headerLen, file);
-        assert(read == headerLen);
-        range += header[1] - header[0] + 1;
-        fclose(file);
-    }
-    return range;
-}
-
-
-int64_t getWidth(const char *file_name) {
     size_t read;
     int headerLen = 3;
     int64_t header[headerLen];
-    // Read file header
-    FILE *file = fopen(file_name, "r");
+    FILE *file = fopen(a->file_paths[0], "r");
     read = fread(header, sizeof(int64_t), headerLen, file);
     assert(read == headerLen);
-    return header[1] - header[0] + 1;
+    fclose(file);
+    
+    return (header[1] - header[0] + 1) * a->len;
 }
-
 
 void write_file(char *file_path, int64_t *buff, unsigned int len) {
     FILE *chunk = fopen(file_path ,"w+");
@@ -120,16 +110,14 @@ void *merge(void *param) {
     }
     printf("\n");
     
-    int64_t stream1 = getTotal(list->a);
-    int64_t stream2 = getTotal(list->b);
+    int64_t stream1 = width * (list->a->len);
+    int64_t stream2 = width * (list->b->len);
     int64_t total = stream1 + stream2;
     
     int64_t ind1 = 0;
     int64_t ind2 = 0;
     unsigned int file_num1 = 0;
     unsigned int file_num2 = 0;
-
-    int64_t width = getWidth(list->a->file_paths[0]);
 
     ind1 = width;
     ind2 = width;
@@ -253,12 +241,23 @@ int main(int argc, char *argv[]) {
     threadpool thpool = thpool_init(threads);
     FilesList *files = read_dir(dir);
     
+    size_t read;
+    int headerLen = 3;
+    int64_t header[headerLen];
+    FILE *file = fopen(files->file_paths[0], "r");
+    read = fread(header, sizeof(int64_t), headerLen, file);
+    assert(read == headerLen);
+    fclose(file);
+    
+    width = (header[1] - header[0] + 1);
+    
+    timestamp();
     for (int x = 0; x < files->len; x++) {
         char *file_name = files->file_paths[x];
-        thpool_add_work(thpool, sort_file, file_name);
+        sort_file(file_name);
     }
+    timestamp();
 
-    thpool_wait(thpool);
     printf("First pass done!\n");
     
     // Add each chunk to the sorted stack
