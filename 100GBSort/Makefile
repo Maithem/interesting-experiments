@@ -1,5 +1,5 @@
 CC = gcc -O3 -pg -pthread -std=gnu99
-
+DEBUG = -pg
 GENERATE_DATA = "generate"
 READ_CHUNK = "read"
 VERIFY_DATA = "verify"

@@ -20,10 +20,11 @@ typedef struct _stack {
 
 typedef struct mergeList {
     unsigned int seq;
-    FilesList *a;
-    FilesList *b;
+    FilesList **lists;
+    unsigned int len;
     Stack *stack;
     char *dir;
+    unsigned int k;
 } MergeList;
 
 

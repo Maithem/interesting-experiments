@@ -15,7 +15,7 @@ void timestamp()
     ltime=time(NULL); /* get current cal time */
     printf("%s",asctime( localtime(&ltime) ) );
 }
-
+int64_t iter = 0;
 pthread_mutex_t lock;
 int64_t width;
 
@@ -67,23 +67,26 @@ void write_file(char *file_path, int64_t *buff, unsigned int len) {
 
 
 void freeMergeList(MergeList *list) {
-    for(int x = 0; x < list->a->len; x++) {
-        free(list->a->file_paths[x]);
-    }    
-    for(int x = 0; x < list->b->len; x++) {
-        free(list->b->file_paths[x]);
+    for (int x = 0; x < list->len; x++) {
+        for (int y = 0; y < list->lists[x]->len; y++) {
+            free(list->lists[x]->file_paths[y]);
+        }
+        free(list->lists[x]);
     }
-
-    free(list->a);
-    free(list->b);
     free(list);
 }
 
 void *merge(void *param) {
     MergeList *list = param;
-    
+
     FilesList *temp = malloc(sizeof(FilesList));
-    temp->len = list->a->len + list->b->len;
+    temp->len = 0;
+    for (int x = 0; x < list->len; x++) {
+        temp->len += list->lists[x]->len;
+    }
+
+    //printf("Merging %u files \n", temp->len);
+    
     temp->file_paths = malloc(sizeof(char*) * temp->len);
     
     //printf("Merging streams:\n");
@@ -95,106 +98,112 @@ void *merge(void *param) {
     //    printf(" %s ", list->b->file_paths[x]);
     //}
     //printf("\n");
-    
-    int64_t stream1 = width * (list->a->len);
-    int64_t stream2 = width * (list->b->len);
-    printf("Merging len %u %u\n", list->a->len, list->b->len);
-    int64_t total = stream1 + stream2;
-    
-    int64_t ind1 = 0;
-    int64_t ind2 = 0;
-    unsigned int file_num1 = 0;
-    unsigned int file_num2 = 0;
 
-    ind1 = width;
-    ind2 = width;
+    int64_t mergeSize = temp->len * width;
     
-    int64_t *streamBuff1= malloc(sizeof(int64_t) * width);
-    int64_t *streamBuff2= malloc(sizeof(int64_t) * width);
+    int *indicies = malloc(sizeof(int) * list->len);
+    int *file_nums = malloc(sizeof(int) * list->len);
+    int64_t **streamBuffs = malloc(sizeof(int64_t *) * list->len);
+
+    // Initialize stream buffers
+    // TODO(Maithem) implement double buffering
+    for (int x = 0; x < list->len; x++) {
+        indicies[x] = width;
+        file_nums[x] = 0;
+        streamBuffs[x] = malloc(sizeof(int64_t) * width);
+    }
     
-    int64_t *merge_buff = malloc(sizeof(int64_t) * width);
+    int64_t *merge_buff = malloc(sizeof(int64_t) * width * list->k);
+    if (merge_buff == NULL) {
+        printf("Can't malloc bro\n");
+    }
     int64_t merge_ind = 0;
-    
+    printf("%u-merge\n", list->k);
     unsigned int merge_chunk = 0;
-    
-    while(total--) {
-        if (ind1 == -1) {
-          // Do nothing  
-        } else if (ind1 >= width && file_num1 < list->a->len) {
-            FILE *file = fopen(list->a->file_paths[file_num1], "r");
-            fseek(file, sizeof(int64_t)*3, SEEK_SET);
-            size_t read = fread(streamBuff1, sizeof(int64_t), width, file);
-            assert(read == width);
-            fclose(file);
-            int ret = remove(list->a->file_paths[file_num1]);
-            if (ret != 0) {
-                printf("couldnt delete file %s\n", list->a->file_paths[file_num1]);
+    timestamp();
+    while(mergeSize--) {
+        // Load stream buffers
+        for (int x = 0; x < list->len; x++) {
+            if (indicies[x] == -1) {
+                // Reached end of buffer on stream, ignore
+                continue;
             }
-            ind1 = 0;
-            file_num1++;
-        } else if(ind1 >= width && file_num1 >= list->a->len){
-            ind1 = -1;
+            else if(indicies[x] >= width && file_nums[x] < list->lists[x]->len) {
+                FILE *file = fopen(list->lists[x]->file_paths[file_nums[x]], "r");
+                // Skip header
+                fseek(file, sizeof(int64_t)*3, SEEK_SET);
+                // Load the data into it's stream buffer and delete the file
+                size_t read = fread(streamBuffs[x], sizeof(int64_t), width, file);
+                assert(read == width);
+                fclose(file);
+                int ret = remove(list->lists[x]->file_paths[file_nums[x]]);
+                if (ret != 0) {
+                    printf("couldnt delete file %s\n", list->lists[x]->file_paths[file_nums[x]]);
+                }
+                // Rewind stream buffer index and increament the file index
+                indicies[x] = 0;
+                file_nums[x]++;
+            } else if (indicies[x] >= width && file_nums[x] >= list->lists[x]->len) {
+                indicies[x] = -1;
+            }
         }
 
-        if (ind2 == -1) {
-          // Do nothing  
-        } else if (ind2 >= width && file_num2 < list->b->len) {
-            FILE *file = fopen(list->b->file_paths[file_num2], "r");
-            fseek(file, sizeof(int64_t)*3, SEEK_SET);
-            size_t read = fread(streamBuff2, sizeof(int64_t), width, file);
-            assert(read == width);
-            fclose(file);
-            int ret = remove(list->b->file_paths[file_num2]);
-            if (ret != 0) {
-                printf("couldnt delete file %s\n", list->b->file_paths[file_num2]);
+        // Select min via linear scan, as long as k is relatively small, then we
+        // don't need a faster method (i.e. min-heap)
+        int64_t min_val = -1;
+        int64_t min_index = -1;
+
+        for (int x = 0; x < list->len; x++) {
+            if (indicies[x] != -1) {
+                if (min_index == -1) {
+                    // Initialize min, will only be hit once, so it won't be a
+                    // problem for the cpu's branch predictor
+                    min_val = streamBuffs[x][indicies[x]];
+                    min_index = x;
+                    iter++;
+                }
+                else if(streamBuffs[x][indicies[x]] < min_val) {
+                    min_val = streamBuffs[x][indicies[x]];
+                    min_index = x;
+                    iter++;
+                }
             }
-            
-            ind2 = 0;
-            file_num2++;
-        } else if(ind2 >= width && file_num2 >= list->b->len){
-            ind2 = -1;
         }
         
-        if (ind1 == -1 && ind2 == -1) {
-        } else if(ind1 == -1) {
-            merge_buff[merge_ind] = streamBuff2[ind2];
-            merge_ind++;
-            ind2++;
-        } else if(ind2 == -1) {
-            merge_buff[merge_ind] = streamBuff1[ind1];
-            merge_ind++;
-            ind1++;
-        } else {
-            if (streamBuff1[ind1] < streamBuff2[ind2]) {
-                merge_buff[merge_ind] = streamBuff1[ind1];
-                ind1++;
+        // Move index on min stream and merge buffer
+        indicies[min_index]++;
+        merge_buff[merge_ind] = min_val;
+        merge_ind++;
+
+        if (merge_ind == (width * list->k) || mergeSize == 0) {
+            unsigned k_widths = 0;
+            if (mergeSize == 0) {
+                k_widths = (merge_ind + 1) / width;
             } else {
-                merge_buff[merge_ind] = streamBuff2[ind2];
-                ind2++;
+                k_widths = list->k;
             }
-            merge_ind++;
-        }
-        
-        if(merge_ind == width) {
-            // Merged a chunk, need to flush buffer
-            // and write file
-            timestamp();
-            printf("merged\n");
-            char *filePath = malloc(sizeof(char) * 120);
-            sprintf(filePath, "%s/s-%u-%u.bin", list->dir, list->seq, merge_chunk);
-            write_file(filePath, merge_buff, width);
-            
-            temp->file_paths[merge_chunk] = filePath;
-            merge_chunk++;
+            // Write k-files at a time, because if the merge buffer
+            // is larger than the write size, contention can happen
+            for (int x = 0 ; x < k_widths; x++) {
+                char *filePath = malloc(sizeof(char) * 120);
+                sprintf(filePath, "%s/s-%u-%u.bin", list->dir, list->seq, merge_chunk);
+                write_file(filePath, &merge_buff[x * width], width);
+                temp->file_paths[merge_chunk] = filePath;
+                merge_chunk++;
+            }
             merge_ind = 0;
         }
     }
-
+timestamp();
+    for (int x = 0; x < list->len; x++) {
+        free(streamBuffs[x]);
+    }
+    free(streamBuffs);
+    free(indicies);
+    free(file_nums);
     free(merge_buff);
     freeMergeList(list);
-    free(streamBuff1);
-    free(streamBuff2);
-    
+    printf("Iter %" PRId64 "\n", iter);
     //printf("Merge seq %u total %" PRId64 "\n", list->seq, total);
     push(list->stack, temp, &lock);
 }
@@ -202,6 +211,7 @@ void *merge(void *param) {
 int main(int argc, char *argv[]) {
     const int threads = atoi(argv[1]);
     char *dir = argv[2];
+    unsigned int k = 10;
 
     // Initialize stack and threadpool
     Stack *sortedStack = malloc(sizeof(Stack));
@@ -221,6 +231,8 @@ int main(int argc, char *argv[]) {
     
     width = (header[1] - header[0] + 1);
     
+    printf("width %" PRId64"\n", width);
+    
     timestamp();
     for (int x = 0; x < files->len; x++) {
         char *file_name = files->file_paths[x];
@@ -229,7 +241,7 @@ int main(int argc, char *argv[]) {
     timestamp();
 
     printf("First pass done!\n");
-    
+
     // Add each chunk to the sorted stack
     for (int x = 0; x < files->len; x++) {
         FilesList *temp = malloc(sizeof(FilesList));
@@ -238,7 +250,7 @@ int main(int argc, char *argv[]) {
         temp->len = 1;
         push(sortedStack, temp, &lock);
     }
-    
+
     unsigned int seq = 0;
     for(;;) {
         //printf("size of stack %d\n", sortedStack->size);
@@ -247,15 +259,28 @@ int main(int argc, char *argv[]) {
     
         // Drain stack
         for(;;) {
-            if(sortedStack->size >= 2) {
-                FilesList *a = pop(sortedStack, &lock);
-                FilesList *b = pop(sortedStack, &lock);
+            if(sortedStack->size >= k) {
                 MergeList *mergeList = malloc(sizeof(MergeList));
+                mergeList->lists = malloc(sizeof(FilesList) * k);
+                mergeList->len = k;
+                for (int x = 0; x < k; x++){
+                    mergeList->lists[x] = pop(sortedStack, &lock);
+                }
                 mergeList->seq = ++seq;
-                mergeList->a = a;
-                mergeList->b = b;
                 mergeList->stack = sortedStack;
                 mergeList->dir = dir;
+                mergeList->k = k;
+                thpool_add_work(thpool, merge, mergeList);
+            } else if (sortedStack->size >= 2) {
+                MergeList *mergeList = malloc(sizeof(MergeList));
+                mergeList->lists = malloc(sizeof(FilesList) * 2);
+                mergeList->len = 2;
+                mergeList->lists[0] = pop(sortedStack, &lock);
+                mergeList->lists[1] = pop(sortedStack, &lock);
+                mergeList->seq = ++seq;
+                mergeList->stack = sortedStack;
+                mergeList->dir = dir;
+                mergeList->k = k;
                 thpool_add_work(thpool, merge, mergeList);
             } else {
                 break;
