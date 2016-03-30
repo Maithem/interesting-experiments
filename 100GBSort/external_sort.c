@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include<pthread.h>
 
 #include "thpool.h"
 #include "shared.h"
@@ -16,7 +17,9 @@ void timestamp()
     printf("%s",asctime( localtime(&ltime) ) );
 }
 int64_t iter = 0;
+int sleepTime = 10000;
 pthread_mutex_t lock;
+pthread_mutex_t writeBuffsLock;
 int64_t width;
 
 void *sort_file(void *param) {
@@ -76,28 +79,39 @@ void freeMergeList(MergeList *list) {
     free(list);
 }
 
+void *write_worker(void *params) {
+    WriteReq *req = params;
+    int64_t *buff = req->buff;
+    write_file(req->name, buff, req->len);
+    sem_wait(req->sem);
+    free(req);
+    // Return buffer to be reused by merge
+    push(req->freeStack, buff, &lock);
+}
+
+int64_t *get_write_buff(Stack *writeBuffs){
+    // Warning waiting till the stack size is greater than zero
+    // then poping an element is not a thread-safe. The right way
+    // of doing this is pop would be a blocking call with a timeout.
+    while(writeBuffs->size == 0) {usleep(sleepTime); printf("waiting\n");}
+    return pop(writeBuffs, &writeBuffsLock);
+}
+
 void *merge(void *param) {
     MergeList *list = param;
+    
+    Stack *writeBuffs = list->buffStack;
+    threadpool thpool = list->thpool;
+    sem_t *sem = malloc(sizeof(sem_t));
+    sem_init(sem, 0, 0);
 
     FilesList *temp = malloc(sizeof(FilesList));
     temp->len = 0;
     for (int x = 0; x < list->len; x++) {
         temp->len += list->lists[x]->len;
     }
-
-    //printf("Merging %u files \n", temp->len);
     
     temp->file_paths = malloc(sizeof(char*) * temp->len);
-    
-    //printf("Merging streams:\n");
-    //for(int x =0; x < list->a->len; x++){
-    //    printf(" %s ", list->a->file_paths[x]);
-    //}
-    //printf("\n");
-    //for(int x =0; x < list->b->len; x++){
-    //    printf(" %s ", list->b->file_paths[x]);
-    //}
-    //printf("\n");
 
     int64_t mergeSize = temp->len * width;
     
@@ -112,15 +126,13 @@ void *merge(void *param) {
         file_nums[x] = 0;
         streamBuffs[x] = malloc(sizeof(int64_t) * width);
     }
-    
-    int64_t *merge_buff = malloc(sizeof(int64_t) * width * list->k);
-    if (merge_buff == NULL) {
-        printf("Can't malloc bro\n");
-    }
+
+    int64_t *merge_buff = get_write_buff(writeBuffs);
+
     int64_t merge_ind = 0;
     printf("%u-merge\n", list->k);
     unsigned int merge_chunk = 0;
-    timestamp();
+
     while(mergeSize--) {
         // Load stream buffers
         for (int x = 0; x < list->len; x++) {
@@ -160,12 +172,10 @@ void *merge(void *param) {
                     // problem for the cpu's branch predictor
                     min_val = streamBuffs[x][indicies[x]];
                     min_index = x;
-                    iter++;
                 }
                 else if(streamBuffs[x][indicies[x]] < min_val) {
                     min_val = streamBuffs[x][indicies[x]];
                     min_index = x;
-                    iter++;
                 }
             }
         }
@@ -175,35 +185,69 @@ void *merge(void *param) {
         merge_buff[merge_ind] = min_val;
         merge_ind++;
 
-        if (merge_ind == (width * list->k) || mergeSize == 0) {
-            unsigned k_widths = 0;
-            if (mergeSize == 0) {
-                k_widths = (merge_ind + 1) / width;
-            } else {
-                k_widths = list->k;
-            }
-            // Write k-files at a time, because if the merge buffer
-            // is larger than the write size, contention can happen
-            for (int x = 0 ; x < k_widths; x++) {
-                char *filePath = malloc(sizeof(char) * 120);
-                sprintf(filePath, "%s/s-%u-%u.bin", list->dir, list->seq, merge_chunk);
-                write_file(filePath, &merge_buff[x * width], width);
-                temp->file_paths[merge_chunk] = filePath;
-                merge_chunk++;
-            }
+        if (merge_ind == width) {
+            char *filePath = malloc(sizeof(char) * 120);
+            sprintf(filePath, "%s/s-%u-%u.bin", list->dir, list->seq, merge_chunk);
+
+            WriteReq *req = malloc(sizeof(WriteReq));
+            req->name = filePath;
+            req->buff = merge_buff;
+            req->len = width;
+            req->freeStack = writeBuffs;
+            req->sem = sem;
+
+            sem_post(sem);
+            thpool_add_work(thpool, write_worker, req);
+
+            temp->file_paths[merge_chunk] = filePath;
+            merge_chunk++;
+
+            // Set a new buffer to be used, wait for buffers
+            // to free up, if no buffers are available
             merge_ind = 0;
+            merge_buff = get_write_buff(writeBuffs);
         }
+        //if (merge_ind == (width * list->k) || mergeSize == 0) {
+        //    unsigned k_widths = 0;
+        //    if (mergeSize == 0) {
+        //        k_widths = (merge_ind + 1) / width;
+        //    } else {
+        //        k_widths = list->k;
+        //    }
+        //    // Write k-files at a time, because if the merge buffer
+        //    // is larger than the write size, contention can happen
+        //    for (int x = 0 ; x < k_widths; x++) {
+        //        char *filePath = malloc(sizeof(char) * 120);
+        //        sprintf(filePath, "%s/s-%u-%u.bin", list->dir, list->seq, merge_chunk);
+        //        write_file(filePath, &merge_buff[x * width], width);
+        //        temp->file_paths[merge_chunk] = filePath;
+        //        merge_chunk++;
+        //    }
+        //    merge_ind = 0;
+        //}
     }
-timestamp();
+
+    push(writeBuffs, merge_buff, &writeBuffsLock);
+    
+    // Wait until all write buffers from this merge step to be
+    // flushed
+    while(1) {
+        int vlap;
+        sem_getvalue(sem, &vlap);
+        //printf("%d\n", vlap);
+        if (vlap == 0) break;
+        
+        usleep(sleepTime);
+    }
+
     for (int x = 0; x < list->len; x++) {
         free(streamBuffs[x]);
     }
     free(streamBuffs);
     free(indicies);
     free(file_nums);
-    free(merge_buff);
+    free(sem);
     freeMergeList(list);
-    printf("Iter %" PRId64 "\n", iter);
     //printf("Merge seq %u total %" PRId64 "\n", list->seq, total);
     push(list->stack, temp, &lock);
 }
@@ -238,9 +282,23 @@ int main(int argc, char *argv[]) {
         char *file_name = files->file_paths[x];
         sort_file(file_name);
     }
+    
     timestamp();
 
     printf("First pass done!\n");
+    
+    // Setup the write buffer
+    threadpool writeThpool = thpool_init(1);
+    Stack *writeBuffs = malloc(sizeof(Stack));
+    writeBuffs->head = NULL;
+    writeBuffs->size = 0;
+    
+    unsigned int numBuffs = k * 10 * threads;
+    
+    for(int x = 0; x < numBuffs; x++) {
+        int64_t *buff = malloc(sizeof(int64_t) * width);
+        push(writeBuffs, buff, &writeBuffsLock);
+    }
 
     // Add each chunk to the sorted stack
     for (int x = 0; x < files->len; x++) {
@@ -256,7 +314,7 @@ int main(int argc, char *argv[]) {
         //printf("size of stack %d\n", sortedStack->size);
         if (sortedStack->size == 1 &&
             thpool_count(thpool) == 0) break;
-    
+
         // Drain stack
         for(;;) {
             if(sortedStack->size >= k) {
@@ -268,6 +326,8 @@ int main(int argc, char *argv[]) {
                 }
                 mergeList->seq = ++seq;
                 mergeList->stack = sortedStack;
+                mergeList->thpool = writeThpool;
+                mergeList->buffStack = writeBuffs;
                 mergeList->dir = dir;
                 mergeList->k = k;
                 thpool_add_work(thpool, merge, mergeList);
@@ -279,6 +339,8 @@ int main(int argc, char *argv[]) {
                 mergeList->lists[1] = pop(sortedStack, &lock);
                 mergeList->seq = ++seq;
                 mergeList->stack = sortedStack;
+                mergeList->thpool = writeThpool;
+                mergeList->buffStack = writeBuffs;
                 mergeList->dir = dir;
                 mergeList->k = k;
                 thpool_add_work(thpool, merge, mergeList);
@@ -289,6 +351,12 @@ int main(int argc, char *argv[]) {
         // Sleep before we check the sorted stack again
         sleep(1);
     }
+    
+    // Free write buffers
+    for (int x = 0; x < numBuffs; x++) {
+        free(pop(writeBuffs, &writeBuffsLock));
+    }
+    free(writeBuffs);
 
     return 0;
 }

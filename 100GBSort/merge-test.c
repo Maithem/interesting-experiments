@@ -31,7 +31,7 @@ void timestamp()
 int main() {
 
     // 3gb stream
-    unsigned int streamLen = 375000000;
+    unsigned int streamLen = 375000000 / 2;
     int64_t *s1 = malloc(sizeof(int64_t) *  streamLen);
     if (s1 == NULL) {printf("Couldn't allocate stream1");}
     int64_t *s2 = malloc(sizeof(int64_t) *  streamLen);
@@ -44,7 +44,6 @@ int main() {
     }
     
     shuffle(ms, streamLen * 2);
-//    shuffle(ms, streamLen * 2);
     
     for (unsigned int x = 0; x < streamLen; x++) {
         s1[x] = ms[x];
@@ -68,10 +67,10 @@ int main() {
       }
       
       if (x % 156250 == 0) {
-        //FILE *f = fopen("merge.bin", "w+");
-        //size_t written = fwrite(ms, sizeof(int64_t), 156250, f);
-        //assert(written == 156250);
-       //fclose(f);
+        FILE *f = fopen("merge.bin", "w+");
+        size_t written = fwrite(ms, sizeof(int64_t), 156250, f);
+        assert(written == 156250);
+        fclose(f);
       }
    }
    timestamp();

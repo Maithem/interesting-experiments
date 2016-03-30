@@ -58,7 +58,7 @@ int cmp(const void *a, const void *b) {
   return (da < db) ? -1 : (da == db) ? 0 : 1;
 }
 
-void push(Stack *stack, FilesList *range, pthread_mutex_t *lock) {
+void push(Stack *stack, void *range, pthread_mutex_t *lock) {
     pthread_mutex_lock(lock);
     
     LinkedList *head = stack->head;
@@ -78,7 +78,7 @@ void push(Stack *stack, FilesList *range, pthread_mutex_t *lock) {
 }
 
 
-FilesList *pop(Stack *stack, pthread_mutex_t *lock) {
+void *pop(Stack *stack, pthread_mutex_t *lock) {
     pthread_mutex_lock(lock);
     LinkedList *head = stack->head;
     if (head == NULL) {
