@@ -46,6 +46,11 @@ typedef struct mergeList {
     unsigned int k;
 } MergeList;
 
+typedef struct _fileBuffs {
+    unsigned a;
+    unsigned b;
+    int64_t **buff;
+} FileBuffs;
 
 int cmp(const void *a, const void *b);
 

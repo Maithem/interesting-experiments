@@ -207,24 +207,6 @@ void *merge(void *param) {
             merge_ind = 0;
             merge_buff = get_write_buff(writeBuffs);
         }
-        //if (merge_ind == (width * list->k) || mergeSize == 0) {
-        //    unsigned k_widths = 0;
-        //    if (mergeSize == 0) {
-        //        k_widths = (merge_ind + 1) / width;
-        //    } else {
-        //        k_widths = list->k;
-        //    }
-        //    // Write k-files at a time, because if the merge buffer
-        //    // is larger than the write size, contention can happen
-        //    for (int x = 0 ; x < k_widths; x++) {
-        //        char *filePath = malloc(sizeof(char) * 120);
-        //        sprintf(filePath, "%s/s-%u-%u.bin", list->dir, list->seq, merge_chunk);
-        //        write_file(filePath, &merge_buff[x * width], width);
-        //        temp->file_paths[merge_chunk] = filePath;
-        //        merge_chunk++;
-        //    }
-        //    merge_ind = 0;
-        //}
     }
 
     push(writeBuffs, merge_buff, &writeBuffsLock);
@@ -252,10 +234,19 @@ void *merge(void *param) {
     push(list->stack, temp, &lock);
 }
 
+void *sort_buffs(void *param) {
+    FileBuffs *t = param;
+    for(int x = t->a; x <= t->b; x++) {
+        qsort(t->buff[x], width, sizeof(int64_t), cmp);
+    }
+}
+
 int main(int argc, char *argv[]) {
     const int threads = atoi(argv[1]);
     char *dir = argv[2];
     unsigned int k = 10;
+    unsigned int initial = 100;
+    int headerLen = 3;
 
     // Initialize stack and threadpool
     Stack *sortedStack = malloc(sizeof(Stack));
@@ -266,7 +257,6 @@ int main(int argc, char *argv[]) {
     FilesList *files = read_dir(dir);
     
     size_t read;
-    int headerLen = 3;
     int64_t header[headerLen];
     FILE *file = fopen(files->file_paths[0], "r");
     read = fread(header, sizeof(int64_t), headerLen, file);
@@ -278,9 +268,69 @@ int main(int argc, char *argv[]) {
     printf("width %" PRId64"\n", width);
     
     timestamp();
+    
+    // allocate first-pass buffers
+    int64_t *buffs[initial];
+    FILE *filesFds[initial];
+    unsigned int buffs_ind = 0;
+    for (int x = 0; x < initial; x++){
+        buffs[x] = malloc(sizeof(int64_t) * width);
+    }
+
+    // Start reading as much data as we can fit into the buffers
+    // then sort them in-memory, then write all the buffers to
+    // files
+    printf("h1 - "); timestamp();
     for (int x = 0; x < files->len; x++) {
         char *file_name = files->file_paths[x];
-        sort_file(file_name);
+        FILE *file = fopen(file_name ,"r+");
+        filesFds[buffs_ind] = file;
+        //Skip header information
+        fseek(file, sizeof(int64_t) * headerLen, SEEK_SET);
+        size_t read = fread(buffs[buffs_ind], sizeof(int64_t), width, file);
+        assert(read == width);
+        
+        buffs_ind++;
+        
+        if (buffs_ind == initial || x == files->len) {
+            //printf("h2 - "); timestamp();
+            //// Sort and flush buffers
+            //
+            //FileBuffs c1;
+            //c1.a = 0;
+            //c1.b = 49;
+            //c1.buff = buffs;
+            //
+            //FileBuffs c2;
+            //c2.a = 50;
+            //c2.b = 99;
+            //c2.buff = buffs;
+            //
+            //thpool_add_work(initialSort, sort_buffs, &c1);
+            //thpool_add_work(initialSort, sort_buffs, &c2);
+            
+            for(int y = 0; y < buffs_ind; y++){
+                printf("sorting - "); timestamp();
+                qsort(buffs[y], width, sizeof(int64_t), cmp);
+                //FileBuffs
+                //thpool_add_work(initialSort, sort_buff, buffs[y]);
+            }
+
+            printf("h3 - "); timestamp();
+            for(int y = 0; y < buffs_ind; y++){
+                fseek(filesFds[y], sizeof(int64_t) * headerLen, SEEK_SET);
+                size_t written = fwrite(buffs[y], sizeof(int64_t), width, filesFds[y]);
+                assert(written == width);
+                fclose(filesFds[y]);
+            }
+            printf("h4 - "); timestamp();
+            // Reset the buffers index to be re-used
+            buffs_ind = 0;
+        }
+    }
+    
+    for (int x = 0; x < initial; x++){
+        free(buffs[x]);
     }
     
     timestamp();
@@ -311,7 +361,6 @@ int main(int argc, char *argv[]) {
 
     unsigned int seq = 0;
     for(;;) {
-        //printf("size of stack %d\n", sortedStack->size);
         if (sortedStack->size == 1 &&
             thpool_count(thpool) == 0) break;
 
