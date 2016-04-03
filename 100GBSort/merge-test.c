@@ -1,79 +1,109 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include <inttypes.h>
 #include <unistd.h>
 #include <time.h>
+#include <string.h>
 #include <assert.h>
 
-/*
- * Randomly shuffle an array.
- */
-void shuffle(int64_t *a, int64_t n) {
-    int64_t i;
-    int64_t r;
-    int64_t temp;
-
-    for(i = n - 1; i > 0; i--) {
-        r = rand() % i;
-        temp = a[r];
-        a[r] = a[i];
-        a[i] = temp;
-    }
+void timestamp() {
+    time_t ltime;
+    ltime=time(NULL);
+    printf("%s",asctime( localtime(&ltime) ) );
 }
 
-void timestamp()
-{
-    time_t ltime; /* calendar time */
-    ltime=time(NULL); /* get current cal time */
-    printf("%s",asctime( localtime(&ltime) ) );
+int cmp(const void *a, const void *b) {
+  const int64_t da = *((const int64_t *) a);
+  const int64_t db = *((const int64_t *) b);
+  return (da < db) ? -1 : (da == db) ? 0 : 1;
+}
+
+typedef struct _req {
+    unsigned int len;
+    unsigned int a;
+    unsigned int b;
+    int64_t **buffers;
+} Req;
+
+void *sort(void *param) {
+    Req *r = param;
+    for (int x = r->a; x < r->b; x++) {
+       qsort(r->buffers[x], r->len, sizeof(int64_t), cmp);
+       printf("sorting\n");
+    }
 }
 
 int main() {
 
-    // 3gb stream
-    unsigned int streamLen = 375000000 / 2;
-    int64_t *s1 = malloc(sizeof(int64_t) *  streamLen);
-    if (s1 == NULL) {printf("Couldn't allocate stream1");}
-    int64_t *s2 = malloc(sizeof(int64_t) *  streamLen);
-    if (s2 == NULL) {printf("Couldn't allocate stream2");}
-    int64_t *ms = malloc(sizeof(int64_t) *  streamLen * 2);
-    if (ms == NULL) {printf("Couldn't allocate merge-stream");}
-    // Zero merge array and split numbers between the two streams
-    for (unsigned int x = 0; x < streamLen * 2; x++) {
-        ms[x] = 0;
+    unsigned int streamLen = 1250000;
+    unsigned int numBuffers = 100;
+    int64_t *buffers[numBuffers];
+    
+    for (int x =0; x < numBuffers; x++){
+        buffers[x] = malloc(sizeof(int64_t) *  streamLen);
     }
     
-    shuffle(ms, streamLen * 2);
-    
-    for (unsigned int x = 0; x < streamLen; x++) {
-        s1[x] = ms[x];
-        s1[x] = ms[x + streamLen];
+    // Initialize buffers
+    for (int x = 0; x < streamLen; x++) {
+        buffers[0][x] = streamLen - x;
     }
     
-   unsigned int ind1 = 0;
-   unsigned int ind2 = 0;
-   timestamp();
-   for(unsigned int x = 0; x < streamLen*2; x++) {
-      if(ind1 >= streamLen) {
-        ms[x] = s2[ind2++];
-      } else if(ind2 >= streamLen) {
-        ms[x] = s1[ind1++];
-      } else {
-        if (s1[ind1] < s2[ind2]) {
-           ms[x] = s1[ind1++];
-        } else {
-           ms[x] = s2[ind2++];
-        }
-      }
-      
-      if (x % 156250 == 0) {
-        FILE *f = fopen("merge.bin", "w+");
-        size_t written = fwrite(ms, sizeof(int64_t), 156250, f);
-        assert(written == 156250);
-        fclose(f);
-      }
-   }
-   timestamp();
-   sleep(15);
+    for (int x = 1; x < numBuffers; x++) {
+        memcpy(buffers[x], buffers[0], sizeof(int64_t) * streamLen);
+    }
+
+    // Method1: Start sorting arrays
+    timestamp();
+    for (int x = 0; x < numBuffers; x++) {
+       qsort(buffers[x], streamLen, sizeof(int64_t), cmp);
+       printf("sortinga\n");
+    }
+    timestamp();
+    
+    
+    // Method2: divide work over 4 threads
+    Req r1;
+    Req r2;
+    Req r3;
+    Req r4;
+    
+    r1.len = streamLen;
+    r1.a = 0;
+    r1.b = 24;
+    r1.buffers = buffers;
+    
+    r2.len = streamLen;
+    r2.a = 25;
+    r2.b = 49;
+    r2.buffers = buffers;
+    
+    r3.len = streamLen;
+    r3.a = 50;
+    r3.b = 74;
+    r3.buffers = buffers;
+    
+    r4.len = streamLen;
+    r4.a = 75;
+    r4.b = 99;
+    r4.buffers = buffers;
+    
+    pthread_t t1;
+    pthread_t t2;
+    pthread_t t3;
+    pthread_t t4;
+    
+    timestamp();
+    pthread_create(&t1, NULL, sort, &r1);
+    pthread_create(&t2, NULL, sort, &r2);
+    pthread_create(&t3, NULL, sort, &r3);
+    pthread_create(&t4, NULL, sort, &r4);
+    
+    pthread_join(t1, NULL);
+    pthread_join(t2, NULL);
+    pthread_join(t3, NULL);
+    pthread_join(t4, NULL);
+    timestamp();
+
    return 0;
 }
