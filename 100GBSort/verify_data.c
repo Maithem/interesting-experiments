@@ -108,7 +108,8 @@ int main(int argc, char *argv[]) {
     // it would compute the total sequence sum for 1 to n
     int128_t n = numOfInts - 1;
     sequenceSum = (n * (n + 1)) / 2;
-    
+    printf("%d\n", (int)totalSum);
+    printf("%d\n", (int)sequenceSum);
     assert(totalSum == sequenceSum);
     printf("Great! check-sum passed!\n");
 

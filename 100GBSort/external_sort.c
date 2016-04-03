@@ -234,10 +234,18 @@ void *merge(void *param) {
     push(list->stack, temp, &lock);
 }
 
-void *sort_buffs(void *param) {
-    FileBuffs *t = param;
-    for(int x = t->a; x <= t->b; x++) {
-        qsort(t->buff[x], width, sizeof(int64_t), cmp);
+typedef struct _req {
+    unsigned int len;
+    unsigned int a;
+    unsigned int b;
+    int64_t **buffers;
+} Req;
+
+void *sort(void *param) {
+    Req *r = param;
+    for (int x = r->a; x < r->b; x++) {
+       qsort(r->buffers[x], r->len, sizeof(int64_t), cmp);
+       printf("sorting\n");
     }
 }
 
@@ -280,6 +288,7 @@ int main(int argc, char *argv[]) {
     // Start reading as much data as we can fit into the buffers
     // then sort them in-memory, then write all the buffers to
     // files
+    printf("h4asd - "); timestamp();
     printf("h1 - "); timestamp();
     for (int x = 0; x < files->len; x++) {
         char *file_name = files->file_paths[x];
@@ -293,30 +302,10 @@ int main(int argc, char *argv[]) {
         buffs_ind++;
         
         if (buffs_ind == initial || x == files->len) {
-            //printf("h2 - "); timestamp();
-            //// Sort and flush buffers
-            //
-            //FileBuffs c1;
-            //c1.a = 0;
-            //c1.b = 49;
-            //c1.buff = buffs;
-            //
-            //FileBuffs c2;
-            //c2.a = 50;
-            //c2.b = 99;
-            //c2.buff = buffs;
-            //
-            //thpool_add_work(initialSort, sort_buffs, &c1);
-            //thpool_add_work(initialSort, sort_buffs, &c2);
-            
-            for(int y = 0; y < buffs_ind; y++){
-                printf("sorting - "); timestamp();
-                qsort(buffs[y], width, sizeof(int64_t), cmp);
-                //FileBuffs
-                //thpool_add_work(initialSort, sort_buff, buffs[y]);
+            for (int ig = 0; ig < buffs_ind; ig++) {
+                qsort(buffs[ig], width, sizeof(int64_t), cmp);
             }
 
-            printf("h3 - "); timestamp();
             for(int y = 0; y < buffs_ind; y++){
                 fseek(filesFds[y], sizeof(int64_t) * headerLen, SEEK_SET);
                 size_t written = fwrite(buffs[y], sizeof(int64_t), width, filesFds[y]);
@@ -328,12 +317,10 @@ int main(int argc, char *argv[]) {
             buffs_ind = 0;
         }
     }
-    
+    printf("h4asd - "); timestamp();
     for (int x = 0; x < initial; x++){
         free(buffs[x]);
     }
-    
-    timestamp();
 
     printf("First pass done!\n");
     

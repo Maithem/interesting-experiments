@@ -39,6 +39,7 @@ typedef struct mergeList {
     unsigned int seq;
     FilesList **lists;
     unsigned int len;
+    unsigned int width;
     Stack *stack;
     Stack *buffStack;
     threadpool thpool;
