@@ -20,6 +20,55 @@ void timestamp() {
     printf("%s",asctime( localtime(&ltime) ) );
 }
 
+typedef struct _alloc{
+    void *ptr;
+    int line;
+} Alloc;
+
+Alloc mem[1000];
+unsigned int deleted = 0;
+unsigned int allocPtr = 0;
+
+void* my_malloc(size_t size, const char *file, int line, const char *func)
+{
+
+    void *p = malloc(size);
+    mem[allocPtr].line = line;
+    mem[allocPtr].ptr = p;
+    allocPtr++;
+
+    return p;
+}
+
+void* my_malloc2(size_t size,size_t size2, const char *file, int line, const char *func)
+{
+
+    void *p = aligned_alloc(size, size2);
+    mem[allocPtr].line = line;
+    mem[allocPtr].ptr = p;
+    allocPtr++;
+
+    return p;
+}
+
+void* my_free(void *ptr, const char *file, int line, const char *func)
+{
+
+    free(ptr);
+    for (int x = 0; x < allocPtr; x++){
+        if(ptr == mem[x].ptr){
+            mem[x].ptr = NULL;
+        }
+    }
+    deleted++;
+}
+
+#define malloc(X) my_malloc( X, __FILE__, __LINE__, __FUNCTION__)
+#define free(X) my_free( X, __FILE__, __LINE__, __FUNCTION__)
+#define aligned_alloc(X,Y) my_malloc2(X, Y,__FILE__, __LINE__, __FUNCTION__)
+
+unsigned int writes = 0;
+
 unsigned int align = 4;
 
 typedef struct _req {
@@ -78,6 +127,7 @@ void write_file(char *file_path, int64_t *buff, unsigned int len) {
     
     size_t written = fwrite(header, sizeof(int64_t), headerLen, chunk);
     assert(written == headerLen);
+    writes++;
     written = fwrite(buff, sizeof(int64_t), len, chunk);
     assert(written == len);
     
@@ -199,7 +249,7 @@ void *merge(void *param) {
 int main(int argc, char *argv[]) {
     const int threads = atoi(argv[1]);
     char *dir = argv[2];
-    unsigned int k = 2;
+    unsigned int k = 32;
     
     unsigned int streamLen = 1250000;
     unsigned int numBuffers = 200;
@@ -234,7 +284,16 @@ int main(int argc, char *argv[]) {
             for (int i = 0; i < firstPassThreadNum; i++) {
                 r[i].len = streamLen;
                 r[i].a = i * numOfChunks;
-                r[i].b = r[i].a + numOfChunks - 1;
+                
+                // Since the number of chunks is not always
+                // divisable by the number of workers, the last
+                // worker will have slightly more work to do
+                if (i == firstPassThreadNum - 1){
+                    r[i].b = buff_ind - 1;
+                } else {
+                    r[i].b = r[i].a + numOfChunks - 1;
+                }
+
                 r[i].buffers = buffers;
                 thpool_add_work(thpool, sort, &r[i]);
             }
@@ -321,5 +380,14 @@ int main(int argc, char *argv[]) {
         // Sleep before we check the sorted stack again
         sleep(1);
     }
+
+    printf("writes   %u \n ", writes);
+    
+    printf("==========leadked at =========\n");
+    unsigned int counter = 0;
+    for (int x = 0; x < allocPtr; x++){
+        if(mem[x].ptr != NULL) {counter++; printf("line %d\n", mem[x].line);}
+    }
+    printf("leaked %d\n", counter - deleted);
    return 0;
 }
